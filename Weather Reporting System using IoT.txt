@@ -1,0 +1,49 @@
+import requests
+from sense_hat import SenseHat
+import time
+
+# Replace with your ThingSpeak API Key
+THINGSPEAK_API_KEY = 'YOUR_THINGSPEAK_API_KEY'
+THINGSPEAK_URL = f'https://api.thingspeak.com/update?api_key={THINGSPEAK_API_KEY}'
+
+sense = SenseHat()
+
+def get_weather_data():
+    temperature = sense.get_temperature()
+    humidity = sense.get_humidity()
+    rain = sense.get_pressure()  # For simplicity, using pressure as a substitute for rain sensor
+    return temperature, humidity, rain
+
+def send_to_thingspeak(temperature, humidity, rain):
+    data = {
+        'field1': temperature,
+        'field2': humidity,
+        'field3': rain
+    }
+    requests.post(THINGSPEAK_URL, data=data)
+
+def set_alerts(temperature, humidity, rain):
+    if temperature > 30 or rain > 1000:
+        print('Red Alert: Extreme Weather Conditions!')
+        # Implement actions for extreme weather (e.g., send notifications)
+    elif temperature > 25 or rain > 800:
+        print('Yellow Alert: Unusual Weather Conditions')
+        # Implement actions for unusual weather (e.g., send notifications)
+    else:
+        print('Green Alert: Normal Weather Conditions')
+
+def main():
+    try:
+        while True:
+            temperature, humidity, rain = get_weather_data()
+            
+            send_to_thingspeak(temperature, humidity, rain)
+            set_alerts(temperature, humidity, rain)
+
+            time.sleep(300)  # Update every 5 minutes
+
+    except KeyboardInterrupt:
+        print("Exiting...")
+
+if __name__ == "__main__":
+    main()

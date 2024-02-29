@@ -1,49 +1,87 @@
-import requests
-from sense_hat import SenseHat
-import time
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP085_U.h>
+#include <DHT.h>
+#include <ESP8266WiFi.h>
+#include <ThingSpeak.h>
 
-# Replace with your ThingSpeak API Key
-THINGSPEAK_API_KEY = 'YOUR_THINGSPEAK_API_KEY'
-THINGSPEAK_URL = f'https://api.thingspeak.com/update?api_key={THINGSPEAK_API_KEY}'
+// Replace with your WiFi credentials
+const char* ssid = "your-ssid";
+const char* password = "your-password";
 
-sense = SenseHat()
+// ThingSpeak API Key
+const char* apiKey = "your-thingspeak-api-key";
 
-def get_weather_data():
-    temperature = sense.get_temperature()
-    humidity = sense.get_humidity()
-    rain = sense.get_pressure()  # For simplicity, using pressure as a substitute for rain sensor
-    return temperature, humidity, rain
+// DHT sensor configuration
+#define DHTPIN 2           // Digital pin connected to the DHT sensor
+#define DHTTYPE DHT11      // DHT 11
 
-def send_to_thingspeak(temperature, humidity, rain):
-    data = {
-        'field1': temperature,
-        'field2': humidity,
-        'field3': rain
-    }
-    requests.post(THINGSPEAK_URL, data=data)
+DHT dht(DHTPIN, DHTTYPE);
 
-def set_alerts(temperature, humidity, rain):
-    if temperature > 30 or rain > 1000:
-        print('Red Alert: Extreme Weather Conditions!')
-        # Implement actions for extreme weather (e.g., send notifications)
-    elif temperature > 25 or rain > 800:
-        print('Yellow Alert: Unusual Weather Conditions')
-        # Implement actions for unusual weather (e.g., send notifications)
-    else:
-        print('Green Alert: Normal Weather Conditions')
+// BMP sensor configuration
+Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
 
-def main():
-    try:
-        while True:
-            temperature, humidity, rain = get_weather_data()
-            
-            send_to_thingspeak(temperature, humidity, rain)
-            set_alerts(temperature, humidity, rain)
+// Rain sensor configuration
+const int rainSensorPin = A0;
 
-            time.sleep(300)  # Update every 5 minutes
+void setup() {
+  Serial.begin(115200);
 
-    except KeyboardInterrupt:
-        print("Exiting...")
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
 
-if __name__ == "__main__":
-    main()
+  // Initialize ThingSpeak
+  ThingSpeak.begin(client);
+
+  // Initialize sensors
+  dht.begin();
+  if (!bmp.begin()) {
+    Serial.println("Could not find a valid BMP085 sensor, check wiring!");
+    while (1);
+  }
+}
+
+void loop() {
+  // Read sensor values
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+  sensors_event_t event;
+  bmp.getEvent(&event);
+  float pressure = event.pressure / 100.0F;
+
+  // Read rain sensor
+  int rainValue = analogRead(rainSensorPin);
+  bool raining = (rainValue < 500);  // Adjust the threshold based on your sensor
+
+  // Print sensor values
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.println(" °C");
+  Serial.print("Humidity: ");
+  Serial.print(humidity);
+  Serial.println(" %");
+  Serial.print("Pressure: ");
+  Serial.print(pressure);
+  Serial.println(" hPa");
+
+  // Send data to ThingSpeak
+  ThingSpeak.setField(1, temperature);
+  ThingSpeak.setField(2, humidity);
+  ThingSpeak.setField(3, pressure);
+  ThingSpeak.setField(4, raining ? 1 : 0);
+  int status = ThingSpeak.writeFields(1, apiKey);
+
+  if (status == 200) {
+    Serial.println("Data sent to ThingSpeak successfully");
+  } else {
+    Serial.println("Error sending data to ThingSpeak. HTTP status code: " + String(status));
+  }
+
+  delay(60000);  // Send data every 1 minute
+}
+
